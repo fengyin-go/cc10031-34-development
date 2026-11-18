@@ -20,6 +20,7 @@ class BatchTrackerService(BaseModuleService):
     STATUS_ORDER = ["收集中", "已收集", "校验中", "已完成", "有遗漏"]
     ACTION_RULES = {"发起校验": "已收集", "确认完成": "有遗漏"}
     NEGATIVE_ACTIONS = []
+    DEDUPE_FIELD = "批次编号"
 
     def track_batch_progress(self, batch_ref: str) -> dict[str, Any]:
         """追踪指定批次的进度（跨模块聚合）。"""

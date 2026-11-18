@@ -71,6 +71,23 @@ npm run dev
 | 运行概览 | `report_dashboard` | 运行数据 | 统计日期、总执行数、成功数 |
 | 任务队列 | `task_queue` | 排队任务 | 任务编号、流程名称、提交时间 |
 
+## 跨模块健康评估
+
+运行概览不再只汇总分散计数，而是把成功率、失败任务、遗漏批次、未闭环任务
+分别汇总，并让每个下降指标都绑定到具体执行编号与批次编号：
+
+- `backend/app/services/health_assessment.py`：健康报告、缺陷归因、批次结论、
+  迟到冲突处理和新到达运行指标对账；
+- `backend/app/routers/health.py`：`/api/health-assessment` 系列接口；
+- `backend/app/seed_health.py`：执行 / 批次 / 任务 / 运行指标的同源示例数据，
+  含重复导入与迟到失败事件；
+- `frontend/src/views/HealthDashboardView.vue`：`/report_dashboard` 健康看板，
+  可按日期、流程、状态查看指标、归因和批次证据，点击下降指标可下钻。
+
+关键约束：同一执行失败只保留一个当前归因；批次结论按批次号版本化；
+迟到失败事件支持 `retain`（保留原指标 + 追加迟到缺陷）和
+`reopen`（重开批次报告 + 替换指标），两种做法都只给失败一个当前归因。
+
 ## 约定
 
 - 全部模块共享`frontend/src/views/WorkbenchView.vue|tsx`和一套资源路由。

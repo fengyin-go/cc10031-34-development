@@ -24,6 +24,7 @@ class TaskQueueService(BaseModuleService):
     STATUS_ORDER = ["排队中", "执行中", "已完成", "已取消", "执行失败"]
     ACTION_RULES = {"取消任务": "已取消", "提升优先级": "排队中"}
     NEGATIVE_ACTIONS = []
+    DEDUPE_FIELD = "任务编号"
 
     # ---- 跨模块业务方法 ----
 

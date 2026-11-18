@@ -14,6 +14,25 @@ class BaseModuleService:
     STATUS_ORDER: list[str] = []
     ACTION_RULES: dict[str, str] = {}
     NEGATIVE_ACTIONS: list[str] = []
+    DEDUPE_FIELD = ""
+
+    def __init__(self) -> None:
+        self.last_create_note = ""
+
+    def _dedupe(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """重复导入只认第一条：按业务编号保留首个登记记录。"""
+        if not self.DEDUPE_FIELD:
+            return rows
+        seen: set[str] = set()
+        kept: list[dict[str, Any]] = []
+        for row in rows:
+            key = str(row.get(self.DEDUPE_FIELD) or "").strip()
+            if key and key in seen:
+                continue
+            if key:
+                seen.add(key)
+            kept.append(row)
+        return kept
 
     def list_entries(
         self,
@@ -24,7 +43,7 @@ class BaseModuleService:
         page: int = 1,
         size: int = 20,
     ) -> tuple[list[dict[str, Any]], int]:
-        rows = list(store.rows(self.MODULE))
+        rows = self._dedupe(list(store.rows(self.MODULE)))
         for field, expected in (filters or {}).items():
             if field in self.LIST_FIELDS:
                 rows = [
@@ -51,6 +70,19 @@ class BaseModuleService:
         if missing:
             return None, missing
         rows = store.rows(self.MODULE)
+        if self.DEDUPE_FIELD:
+            key = str(values.get(self.DEDUPE_FIELD) or "").strip()
+            existing = next(
+                (row for row in rows
+                 if key and str(row.get(self.DEDUPE_FIELD) or "").strip() == key),
+                None,
+            )
+            if existing is not None:
+                # 重复导入只认第一条：直接返回首条记录，不新增副本。
+                self.last_create_note = (
+                    f"{self.DEDUPE_FIELD} {key} 已存在，重复导入只认第一条")
+                return existing, []
+        self.last_create_note = ""
         entry = {"id": max((int(row.get("id", 0)) for row in rows), default=0) + 1}
         entry.update({field: values.get(field) for field in self.LIST_FIELDS})
         entry["status"] = self.STATUS_ORDER[0]
@@ -63,6 +95,10 @@ class BaseModuleService:
         entry = store.find(self.MODULE, entry_id)
         if entry is None:
             return None, f"{self.ENTITY} {entry_id} 不存在或已归档"
+        if self.DEDUPE_FIELD and self._is_duplicate(entry):
+            return None, (
+                f"{self.DEDUPE_FIELD} {entry.get(self.DEDUPE_FIELD)} 为重复导入，"
+                "只认第一条记录")
         target = self.ACTION_RULES.get(action)
         if target is None:
             return None, f"动作「{action}」不属于{self.MODULE}可执行范围"
@@ -70,6 +106,19 @@ class BaseModuleService:
         entry["pending"] = target != self.STATUS_ORDER[-1]
         entry["abnormal"] = action in self.NEGATIVE_ACTIONS
         return entry, f"{self.ENTITY}已{action}"
+
+    def _is_duplicate(self, entry: dict[str, Any]) -> bool:
+        if not self.DEDUPE_FIELD:
+            return False
+        key = str(entry.get(self.DEDUPE_FIELD) or "").strip()
+        if not key:
+            return False
+        first = next(
+            (row for row in store.rows(self.MODULE)
+             if str(row.get(self.DEDUPE_FIELD) or "").strip() == key),
+            None,
+        )
+        return first is not None and int(first.get("id") or 0) != int(entry.get("id") or 0)
 
     def domain_snapshot(self) -> dict[str, Any]:
         """输出模块级数据质量快照，供跨模块消费和题位源码锚点使用。"""

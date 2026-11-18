@@ -1,6 +1,7 @@
 import { request } from './client'
 import { moduleMeta } from '@/data/modules'
 import type { ActionResult, EntryRow, OverviewResult, PageResult } from '@/data/types'
+import type { HealthListResponse, HealthReport } from '@/data/health'
 
 export { moduleMeta }
 
@@ -104,5 +105,45 @@ export async function triggerPipeline(lifecycle: string): Promise<Record<string,
 export async function loadRecoveryStats(): Promise<Record<string, unknown>> {
   const response = await request('/api/recovery')
   if (!response.ok) throw new Error('恢复状态查询失败')
+  return await response.json()
+}
+
+/** 运行健康评估：按日期、流程和状态拉取健康指标、缺陷归因和批次证据 */
+export async function loadHealthReports(filters: {
+  date?: string
+  flow?: string
+  status?: string
+  policy?: string
+} = {}): Promise<HealthListResponse> {
+  const query = new URLSearchParams(
+    Object.entries(filters).filter(([, value]) => Boolean(value)) as [string, string][],
+  ).toString()
+  const response = await request(`/api/health-assessment${query ? `?${query}` : ''}`)
+  if (!response.ok) throw new Error('健康评估读取失败')
+  return await response.json()
+}
+
+/** 运行健康评估：刷新概览，重算指标并发布新的报告版本 */
+export async function reassessHealth(filters: {
+  date?: string
+  flow?: string
+  policy?: string
+} = {}): Promise<{ ok: boolean; reports: HealthReport[] }> {
+  const query = new URLSearchParams(
+    Object.entries(filters).filter(([, value]) => Boolean(value)) as [string, string][],
+  ).toString()
+  const response = await request(`/api/health-assessment/reassess${query ? `?${query}` : ''}`, {
+    method: 'POST',
+  })
+  if (!response.ok) throw new Error('健康评估刷新失败')
+  return await response.json()
+}
+
+/** 运行健康评估：按执行编号查看当前归因与证据链 */
+export async function loadExecutionAttribution(executionNo: string): Promise<Record<string, unknown>> {
+  const response = await request(
+    `/api/health-assessment/executions/${encodeURIComponent(executionNo)}/attribution`,
+  )
+  if (!response.ok) throw new Error('执行归因读取失败')
   return await response.json()
 }
